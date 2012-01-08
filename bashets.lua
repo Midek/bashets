@@ -4,8 +4,8 @@
 -- @author Anton Lobov &lt;ahmad200512@yandex.ru&gt;
 -- @copyright 2010 Anton Lobov
 -- @license GPLv3
--- @release 0.6.1 (meant to be backwards compatible with older versions)
-------------------------------------------------------------------------
+-- @release 0.6.2 for Awesome-git
+-----------------------------------------------------------------------
 
 -- Grab only needed enviroment
 local awful = require("awful")
@@ -145,11 +145,13 @@ end
 -- @param output sep-separated string of values
 -- @param format Format string
 -- @param sep Separator of values in string
-function util.format(parts, format, sep)
+function util.format(parts, format, escape)
 	-- For each part with number "k" replace corresponding "$k" variable in format string
 	for k,part in pairs(parts) do
 		local part = string.gsub(part, "%%", "%1%1") --percent fix for next gsub (bug found in Wicked)
-		part = awful.util.escape(part) --escape XML entities for correct Pango markup
+		if escape then
+			part = awful.util.escape(part) --escape XML entities for correct Pango markup
+		end
 		format = string.gsub(format, "$" .. k, part)
 	end
 
@@ -203,34 +205,64 @@ function util.create_timers_table()
 	end
 end
 
+
+function util.get_widget_meta(widget)
+	if widget.type == "imagebox" then                                     --imagebox (old API)
+		return {wtype = "imagebox", update = function (v) widget["image"] = image(v) end}
+	elseif widget.set_image ~= nil then                                   --imagebox (new API)
+		return {wtype = "imagebox", update = function (v) widget:set_image(v) end}
+	elseif widget.type == "textbox" then                                  --textbox  (old API)
+		return {wtype = "textbox", update = function (v) widget["text"] = v end}
+	elseif widget.set_markup ~= nil then	
+		return {wtype = "textbox", update = function (v) widget:set_markup(v) end}         --textbox  (new API)
+	elseif widget.set_value ~= nil then									  --progressbar (new API)
+		return {wtype = "progressbar", update = function (v) widget:set_value(tonumber(v)) end}         
+	elseif widget.add_value ~= nil then									  --graph (new API)
+		return {wtype = "graph", update = function (v) widget:add_value(tonumber(v)) end}        
+	else
+		return {wtype = "unknown", update = function (v) error("bashets: unknown widget type to deal with") end} 
+	end	
+end
+
+
 function util.update_widget_field(widget, valuess)
+
+	local wid = util.get_widget_meta(widget)
+	wid.update(valuess)
+	
+
 --	print(widget.type)
-	if widget.type == "imagebox" then				--imagebox (old API)
-		widget["image"] = image(valuess)
-	elseif widget.set_image ~= nil then				--imagebox (new API)
-		--widget["image"] = capi.oocairo.image_surface_create_from_png(valuess)
-		--widget:set_image(capi.oocairo.image_surface_create_from_png(valuess))
-		widget:set_image(valuess)
-	elseif widget.type == "textbox" then				--textbox (old API)
-		widget["text"] = valuess
-	elseif widget.set_markup ~= nil then				--textbox (new API)
-		widget:set_markup(valuess)
-	--elseif widget["widget"] ~= nil then
-		elseif widget.set_value ~= nil then				--progressbar
-			widget:set_value(tonumber(valuess))
-		elseif widget.add_value ~= nil then			--graph
-			widget:add_value(tonumber(valuess))
-		end
-	--end
+--	if widget.type == "imagebox" then				--imagebox (old API)
+--		widget["image"] = image(valuess)
+--	elseif widget.set_image ~= nil then				--imagebox (new API)
+--		--widget["image"] = capi.oocairo.image_surface_create_from_png(valuess)
+--		--widget:set_image(capi.oocairo.image_surface_create_from_png(valuess))
+--		widget:set_image(valuess)
+--	elseif widget.type == "textbox" then				--textbox (old API)
+--		widget["text"] = valuess
+--	elseif widget.set_markup ~= nil then				--textbox (new API)
+--		widget:set_markup(valuess)
+--	--elseif widget["widget"] ~= nil then
+--		elseif widget.set_value ~= nil then				--progressbar
+--			widget:set_value(tonumber(valuess))
+--		elseif widget.add_value ~= nil then			--graph
+--			widget:add_value(tonumber(valuess))
+--		end
+--	--end
 end
 
 --- Update widget from values
 function util.update_widget(widget, values, format)
 	if widget ~= nil then
+		local w = util.get_widget_meta(widget)
 		if type(values) == "table" then
-			util.update_widget_field(widget, util.format(values, format))			
+			util.update_widget_field(widget, util.format(values, format, w.wtype == "textbox"))			
 		else
-			util.update_widget_field(widget, values)
+			if (w.wtype == "textbox") then
+				util.update_widget_field(widget, awful.util.escape(values))
+			else
+				util.update_widget_field(widget, values)
+			end
 		end
 	end
 end
